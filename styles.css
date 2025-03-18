@@ -1,0 +1,136 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Arial', sans-serif;
+}
+
+body {
+    background-color: #f5f5f5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 30px;
+    width: 100%;
+    max-width: 600px;
+    text-align: center;
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 5px;
+    font-size: 2.2rem;
+}
+
+h2 {
+    color: #666;
+    font-size: 1.2rem;
+    font-weight: normal;
+    margin-bottom: 30px;
+}
+
+.cloudflare-text {
+    color: #f38020;
+    font-weight: bold;
+}
+
+.search-container {
+    display: flex;
+    margin-bottom: 30px;
+}
+
+#url-input {
+    flex: 1;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px 0 0 4px;
+    font-size: 16px;
+    outline: none;
+}
+
+#url-input:focus {
+    border-color: #f38020;
+}
+
+#scan-button {
+    background-color: #f38020;
+    color: white;
+    border: none;
+    border-radius: 0 4px 4px 0;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+
+#scan-button:hover {
+    background-color: #e67300;
+}
+
+.results-container {
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: left;
+    min-height: 100px;
+    display: none;
+}
+
+.results-container.show {
+    display: block;
+}
+
+.result-item {
+    margin-bottom: 15px;
+}
+
+.result-title {
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #333;
+}
+
+.result-value {
+    color: #666;
+    word-break: break-all;
+    list-style-position: inside;
+}
+
+.result-value.loading-value {
+    display: flex;
+    align-items: center;
+    justify-content: start;
+}
+
+.cloudflare-detected {
+    color: #f38020;
+    font-weight: bold;
+}
+
+.cloudflare-not-detected {
+    color: #666;
+}
+
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(243, 128, 32, 0.3);
+    border-radius: 50%;
+    border-top-color: #f38020;
+    animation: spin 1s ease-in-out infinite;
+    margin-right: 10px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
