@@ -51,14 +51,18 @@ $(document).ready(function() {
         let results = {
             url: originalUrl,
             isCloudflare: false,
-            evidence: []
+            evidence: [],
+            cdnOrProxy: null,
+            cdnEvidence: [],
+            nameservers: [],
+            nsEvidence: []
         };
-
+    
         try {
             // Check if we got a valid response
             if (response && (response.contents || response.headers)) {
                 const headers = parseHeaders(response);
-                
+    
                 // Updated detection logic
                 const cloudflareIndicators = [
                     { key: 'cf-ray', message: 'CF-Ray header found' },
@@ -70,7 +74,7 @@ $(document).ready(function() {
                     { key: 'cloudflare-honeypot', message: 'Cloudflare security honeypot detected' },
                     { key: 'cf-ssl', message: 'Cloudflare SSL detected' }
                 ];
-
+    
                 cloudflareIndicators.forEach(indicator => {
                     const value = headers[indicator.key];
                     if (value && (!indicator.test || indicator.test(value))) {
@@ -78,19 +82,53 @@ $(document).ready(function() {
                         results.evidence.push(`${indicator.message}: ${value}`);
                     }
                 });
-
+    
                 // Fallback check for any Cloudflare mention in HTML
                 if (response.contents && response.contents.toLowerCase().includes('cloudflare')) {
                     results.isCloudflare = true;
                     results.evidence.push('Cloudflare mentioned in page content');
                 }
+    
+                // CDN/Proxy detection logic
+                const cdnProxyIndicators = [
+                    { key: 'server', name: 'Akamai', test: v => v.toLowerCase().includes('akamai') },
+                    { key: 'x-akamai-transformed', name: 'Akamai' },
+                    { key: 'x-cache', name: 'Akamai', test: v => v.toLowerCase().includes('akamai') },
+                    { key: 'x-cdn', name: 'Fastly', test: v => v.toLowerCase().includes('fastly') },
+                    { key: 'x-served-by', name: 'Fastly', test: v => v.toLowerCase().includes('fastly') },
+                    { key: 'x-cache', name: 'Fastly', test: v => v.toLowerCase().includes('fastly') },
+                    { key: 'x-sucuri-id', name: 'Sucuri' },
+                    { key: 'x-sucuri-cache', name: 'Sucuri' },
+                    { key: 'x-cdn', name: 'Sucuri', test: v => v.toLowerCase().includes('sucuri') },
+                    { key: 'x-cdn', name: 'Incapsula', test: v => v.toLowerCase().includes('incapsula') },
+                    { key: 'x-iinfo', name: 'Incapsula' },
+                    { key: 'x-cdn', name: 'Amazon CloudFront', test: v => v.toLowerCase().includes('cloudfront') },
+                    { key: 'via', name: 'Amazon CloudFront', test: v => v.toLowerCase().includes('cloudfront') },
+                    { key: 'x-amz-cf-id', name: 'Amazon CloudFront' },
+                    { key: 'x-amz-cf-pop', name: 'Amazon CloudFront' },
+                    { key: 'x-cdn', name: 'StackPath', test: v => v.toLowerCase().includes('stackpath') },
+                    { key: 'x-cdn', name: 'BunnyCDN', test: v => v.toLowerCase().includes('bunnycdn') },
+                    { key: 'server', name: 'BunnyCDN', test: v => v.toLowerCase().includes('bunnycdn') },
+                    { key: 'x-cdn', name: 'KeyCDN', test: v => v.toLowerCase().includes('keycdn') },
+                    { key: 'server', name: 'KeyCDN', test: v => v.toLowerCase().includes('keycdn') },
+                    { key: 'x-cdn', name: 'CDN77', test: v => v.toLowerCase().includes('cdn77') },
+                    { key: 'server', name: 'CDN77', test: v => v.toLowerCase().includes('cdn77') }
+                ];
+    
+                cdnProxyIndicators.forEach(indicator => {
+                    const value = headers[indicator.key];
+                    if (value && (!indicator.test || indicator.test(value))) {
+                        results.cdnOrProxy = indicator.name;
+                        results.cdnEvidence.push(`${indicator.name} detected via header "${indicator.key}": ${value}`);
+                    }
+                });
             }
         } catch (e) {
             results.evidence.push('Error processing response: ' + e.message);
         }
-
-        // Add SSL check after initial processing
-        checkSSLcertificate(originalUrl, results);
+    
+        // Add nameserver check after initial processing
+        checkNameservers(originalUrl, results);
     }
 
     // New SSL checking function
@@ -136,6 +174,61 @@ $(document).ready(function() {
         } catch (e) {
             console.error('SSL check error:', e);
             displayResults(results);
+        }
+    }
+
+    // New function to check nameservers using Cloudflare DNS-over-HTTPS
+    function checkNameservers(url, results) {
+        try {
+            const domain = new URL(url).hostname;
+            const dnsApi = 'https://cloudflare-dns.com/dns-query?name=' + encodeURIComponent(domain) + '&type=NS';
+    
+            $.ajax({
+                url: dnsApi,
+                type: 'GET',
+                dataType: 'json',
+                headers: { 'Accept': 'application/dns-json' },
+                success: function(response) {
+                    if (response && response.Answer) {
+                        const nsList = response.Answer
+                            .filter(ans => ans.type === 2 && ans.data)
+                            .map(ans => ans.data.toLowerCase());
+                        results.nameservers = nsList;
+    
+                        // Check for Cloudflare or common CDN nameservers
+                        nsList.forEach(ns => {
+                            if (ns.includes('cloudflare')) {
+                                results.isCloudflare = true;
+                                results.nsEvidence.push('Cloudflare nameserver detected: ' + ns);
+                            } else if (ns.includes('akamai')) {
+                                results.cdnOrProxy = 'Akamai';
+                                results.nsEvidence.push('Akamai nameserver detected: ' + ns);
+                            } else if (ns.includes('fastly')) {
+                                results.cdnOrProxy = 'Fastly';
+                                results.nsEvidence.push('Fastly nameserver detected: ' + ns);
+                            } else if (ns.includes('incapdns')) {
+                                results.cdnOrProxy = 'Incapsula';
+                                results.nsEvidence.push('Incapsula nameserver detected: ' + ns);
+                            } else if (ns.includes('sucuridns')) {
+                                results.cdnOrProxy = 'Sucuri';
+                                results.nsEvidence.push('Sucuri nameserver detected: ' + ns);
+                            } else if (ns.includes('cdns.net')) {
+                                results.cdnOrProxy = 'CDNetworks';
+                                results.nsEvidence.push('CDNetworks nameserver detected: ' + ns);
+                            }
+                        });
+                    }
+                    // Continue to SSL check
+                    checkSSLcertificate(url, results);
+                },
+                error: function(xhr, status, error) {
+                    results.nsEvidence.push('Nameserver check failed: ' + error);
+                    checkSSLcertificate(url, results);
+                }
+            });
+        } catch (e) {
+            results.nsEvidence.push('Nameserver check error: ' + e.message);
+            checkSSLcertificate(url, results);
         }
     }
 
@@ -194,13 +287,13 @@ $(document).ready(function() {
         // Clear previous results
         const $results = $('#results');
         $results.empty().removeClass('show');
-        
+    
         // Create result HTML
         let html = '<div class="result-item">';
         html += '<div class="result-title">URL Checked:</div>';
         html += '<div class="result-value">' + escapeHtml(results.url) + '</div>';
         html += '</div>';
-        
+    
         html += '<div class="result-item">';
         html += '<div class="result-title">Cloudflare Status:</div>';
         if (results.isCloudflare) {
@@ -210,11 +303,28 @@ $(document).ready(function() {
         }
         html += '</div>';
     
+        // Add CDN/Proxy Status section
+        html += '<div class="result-item">';
+        html += '<div class="result-title">CDN/Proxy Status:</div>';
+        if (results.cdnOrProxy) {
+            html += '<div class="result-value cloudflare-detected">✓ ' + escapeHtml(results.cdnOrProxy) + ' Detected</div>';
+            if (results.cdnEvidence && results.cdnEvidence.length > 0) {
+                html += '<ul class="result-value">';
+                results.cdnEvidence.forEach(function(item) {
+                    html += '<li>' + escapeHtml(item) + '</li>';
+                });
+                html += '</ul>';
+            }
+        } else {
+            html += '<div class="result-value cloudflare-not-detected">✗ No CDN/Proxy Detected</div>';
+        }
+        html += '</div>';
+    
         // Add SSL Status section
         html += '<div class="result-item">';
         html += '<div class="result-title">SSL Status:</div>';
-        const sslEvidence = results.evidence.find(e => 
-            e.includes('Cloudflare SSL Certificate') || 
+        const sslEvidence = results.evidence.find(e =>
+            e.includes('Cloudflare SSL Certificate') ||
             e.includes('Universal SSL')
         );
         if (sslEvidence) {
@@ -223,7 +333,7 @@ $(document).ready(function() {
             html += '<div class="result-value cloudflare-not-detected">✗ No Cloudflare SSL detected</div>';
         }
         html += '</div>';
-        
+    
         if (results.evidence && results.evidence.length > 0) {
             html += '<div class="result-item">';
             html += '<div class="result-title">Evidence:</div>';
@@ -234,7 +344,47 @@ $(document).ready(function() {
             html += '</ul>';
             html += '</div>';
         }
-        
+    
+        // Add Nameserver Status section
+        let nsHtml = '<div class="result-item">';
+        nsHtml += '<div class="result-title">Nameservers:</div>';
+        if (results.nameservers && results.nameservers.length > 0) {
+            nsHtml += '<ul class="result-value">';
+            results.nameservers.forEach(function(ns) {
+                nsHtml += '<li>' + escapeHtml(ns) + '</li>';
+            });
+            nsHtml += '</ul>';
+        } else {
+            nsHtml += '<div class="result-value cloudflare-not-detected">No nameservers found</div>';
+        }
+        nsHtml += '</div>';
+    
+        // Add Nameserver Evidence section if any
+        if (results.nsEvidence && results.nsEvidence.length > 0) {
+            nsHtml += '<div class="result-item">';
+            nsHtml += '<div class="result-title">Nameserver Evidence:</div>';
+            nsHtml += '<ul class="result-value">';
+            results.nsEvidence.forEach(function(item) {
+                nsHtml += '<li>' + escapeHtml(item) + '</li>';
+            });
+            nsHtml += '</ul>';
+            nsHtml += '</div>';
+        }
+    
+        // Insert nameserver info before SSL section
+        html += nsHtml;
+    
+        if (results.evidence && results.evidence.length > 0) {
+            html += '<div class="result-item">';
+            html += '<div class="result-title">Evidence:</div>';
+            html += '<ul class="result-value">';
+            results.evidence.forEach(function(item) {
+                html += '<li>' + escapeHtml(item) + '</li>';
+            });
+            html += '</ul>';
+            html += '</div>';
+        }
+    
         // Add the results to the page
         $results.html(html).addClass('show');
     }
